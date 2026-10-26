@@ -1,0 +1,8 @@
+{
+  "name": "muse",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "ping": "node scripts/ping.js"
+  }
+}
