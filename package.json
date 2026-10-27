@@ -1,8 +1,13 @@
 {
-  "name": "muse",
+  "name": "deck-check",
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node test.js",
+    "dev": "node server.js",
     "ping": "node scripts/ping.js"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

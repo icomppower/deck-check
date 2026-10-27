@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deck Check</title>
+<style>
+:root {
+  --bg: #f6f3ec; --panel: #fffdf9; --ink: #1f1c18; --muted: #6d675d; --line: #e0d9cc;
+  --ok: #1e8449; --bad: #d0392b; --accent: #8a5a2b; --tub: #2c6db0;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141311; --panel: #1d1b18; --ink: #ede8df; --muted: #a29b8f; --line: #35312b;
+    --ok: #43c47a; --bad: #ff6b5e; --accent: #d79f63; --tub: #6caaee;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 880px; margin: 0 auto; padding: 28px 16px 48px; }
+h1 { margin: 0; font-size: 30px; letter-spacing: -0.01em; }
+h2 { margin: 0 0 10px; font-size: 17px; }
+.tag { margin: 4px 0 20px; color: var(--muted); }
+.tag strong { color: var(--ink); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+form { display: flex; flex-wrap: wrap; gap: 8px; }
+input { flex: 1 1 320px; min-width: 0; padding: 10px 12px; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+button { font: inherit; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+button.ghost { background: transparent; color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+#status { margin: 10px 0 0; min-height: 1.5em; }
+.stat { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.big { font-size: 44px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ok { color: var(--ok); } .bad { color: var(--bad); }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.tabs button { padding: 6px 10px; font-size: 14px; background: transparent; color: var(--ink); border-color: var(--line); }
+.tabs button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+svg { width: 100%; height: auto; display: block; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; color: var(--muted); margin: 10px 0 0; }
+.sw { display: inline-block; width: 16px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; }
+ul.fails { margin: 12px 0 0; padding-left: 18px; font-size: 14px; }
+.note { margin: 12px 0 0; }
+.muted { color: var(--muted); font-size: 14px; }
+.err { color: var(--bad); white-space: pre-wrap; }
+footer { color: var(--muted); font-size: 13px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Deck Check</h1>
+  <p class="tag">One sentence in, a framing plan out, every joist checked by code. <strong>The model proposes. The code approves.</strong></p>
+
+  <div class="card">
+    <form id="form">
+      <input id="sentence" type="text" aria-label="Describe your deck" value="16 by 12 deck off the back of the house, hot tub in the right corner">
+      <button id="go" type="submit">Check my deck</button>
+      <button id="toggle" type="button" class="ghost" disabled>Without hot tub</button>
+    </form>
+    <p id="status" class="muted" aria-live="polite"></p>
+  </div>
+
+  <section id="out" hidden>
+    <div class="card">
+      <div class="stat"><span class="big" id="big"></span><span id="verdict"></span></div>
+      <p class="muted" id="statline" style="margin:6px 0 0"></p>
+    </div>
+
+    <div class="card">
+      <div class="tabs" id="tabs" role="group" aria-label="Rounds"></div>
+      <svg id="plan" role="img" aria-label="Deck framing plan, seen from above"></svg>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--ok)"></span>joist passes</span>
+        <span><span class="sw" style="background:var(--bad)"></span>joist fails</span>
+        <span><span class="sw" style="background:var(--tub)"></span>hot tub (100 psf)</span>
+      </div>
+      <ul class="fails" id="fails"></ul>
+    </div>
+
+    <div class="card">
+      <h2>Cut list and permit note</h2>
+      <div class="scroll"><table id="cut"></table></div>
+      <p class="note" id="note"></p>
+    </div>
+
+    <div class="card">
+      <h2>Muse calls</h2>
+      <div class="scroll"><table id="calls"></table></div>
+    </div>
+  </section>
+
+  <footer>Demo span table (simplified IRC 2021 R507.6, Southern Pine #2, 40 live + 10 dead psf), not an engineering stamp. Hot tub decks need a licensed engineer.</footer>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ft = (n) => `${Math.round(n * 100) / 100}`;
+
+let result = null;   // last pipeline response
+let lastTub = null;  // hot tub footprint from the last run that had one
+let viewing = 0;
+
+$('form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const sentence = $('sentence').value.trim();
+  if (sentence) run({ sentence });
+});
+
+// Rerun the current framing with the hot tub removed or added. Adding it is the demo moment:
+// the joists under the tub go red and Muse has to fix them.
+const cornerTub = (p) => {
+  const s = Math.min(7, p.width, p.depth);
+  return { x0: p.width - s, x1: p.width, y0: p.depth - s, y1: p.depth };
+};
+$('toggle').addEventListener('click', () => {
+  if (!result) return;
+  const framing = result.rounds.at(-1).plan;
+  const plan = result.draft.hotTub ? { ...framing, hotTub: null } : { ...framing, hotTub: lastTub ?? cornerTub(framing) };
+  run({ sentence: result.sentence, plan });
+});
+
+function setBusy(busy, msg) {
+  $('go').disabled = busy;
+  $('toggle').disabled = busy || !result;
+  $('status').textContent = msg;
+}
+
+async function run(body) {
+  setBusy(true, body.plan ? (body.plan.hotTub ? 'Adding the hot tub to the same framing…' : 'Re-checking without the hot tub…') : 'Muse is drafting the plan…');
+  try {
+    const res = await fetch('/api/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    result = data;
+    if (data.draft.hotTub) lastTub = data.draft.hotTub;
+    viewing = data.rounds.length - 1;
+    setBusy(false, '');
+    render();
+  } catch (err) {
+    setBusy(false, '');
+    $('status').innerHTML = `<span class="err">${esc(err.message)}</span>`;
+  }
+}
+
+function render() {
+  const { stats, draft } = result;
+  $('out').hidden = false;
+  $('big').innerHTML = `<span class="${stats.firstRed ? 'bad' : 'ok'}">${stats.firstRed}</span> → <span class="${stats.finalRed ? 'bad' : 'ok'}">${stats.finalRed}</span>`;
+  $('verdict').innerHTML = `failing joists · <strong class="${stats.pass ? 'ok' : 'bad'}">${stats.pass ? 'every joist passes' : 'still failing'}</strong>`;
+  $('statline').textContent = `${ft(draft.width)} × ${ft(draft.depth)} ft deck, ${draft.hotTub ? 'with hot tub' : 'no hot tub'} · ${stats.fixRounds} fix round${stats.fixRounds === 1 ? '' : 's'} · ${stats.museCalls} Muse call${stats.museCalls === 1 ? '' : 's'}`;
+  $('toggle').textContent = draft.hotTub ? 'Without hot tub' : 'Add hot tub';
+  $('toggle').disabled = false;
+  renderTabs();
+  renderRound(result.rounds[viewing]);
+  renderSummary();
+  renderCalls(result.calls);
+}
+
+function renderTabs() {
+  $('tabs').innerHTML = result.rounds.map((r, i) =>
+    `<button type="button" data-i="${i}" aria-pressed="${i === viewing}">${esc(r.label)} · <span class="${r.check.red ? 'bad' : 'ok'}">${r.check.red} red</span></button>`).join('');
+  $('tabs').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+    viewing = Number(b.dataset.i);
+    renderTabs();
+    renderRound(result.rounds[viewing]);
+  }));
+}
+
+function renderRound({ plan, check }) {
+  const S = 40;                      // svg units per foot
+  const W = plan.width * S, D = plan.depth * S;
+  const pad = 30, house = 34, below = 64;
+  const fs = Math.max(16, (W + pad * 2) / 34);
+  const ox = pad, oy = pad + house;
+  const t = plan.hotTub;
+  let s = '';
+  s += `<rect x="${ox - 8}" y="${pad}" width="${W + 16}" height="${house - 10}" rx="3" style="fill:var(--line)"/>`;
+  s += `<text x="${ox + W / 2}" y="${pad + (house - 10) / 2}" dominant-baseline="middle" text-anchor="middle" font-size="${fs * 0.8}" style="fill:var(--muted)">HOUSE · ledger</text>`;
+  if (t) {
+    s += `<rect x="${ox + t.x0 * S}" y="${oy + t.y0 * S}" width="${(t.x1 - t.x0) * S}" height="${(t.y1 - t.y0) * S}" rx="6" style="fill:var(--tub);fill-opacity:.14;stroke:var(--tub);stroke-width:2;stroke-dasharray:8 5"/>`;
+    s += `<text x="${ox + (t.x0 + t.x1) / 2 * S}" y="${oy + (t.y0 + t.y1) / 2 * S}" dominant-baseline="middle" text-anchor="middle" font-size="${fs * 0.8}" font-weight="600" style="fill:var(--tub)">HOT TUB</text>`;
+  }
+  for (const z of plan.zones.slice(1)) {
+    s += `<line x1="${ox + z.x0 * S}" y1="${oy + D + 8}" x2="${ox + z.x0 * S}" y2="${oy + D + below - 20}" style="stroke:var(--muted);stroke-dasharray:3 3"/>`;
+  }
+  for (const j of check.joists) {
+    const x = ox + j.x * S;
+    s += `<line x1="${x}" y1="${oy}" x2="${x}" y2="${oy + D}" stroke-linecap="round" style="stroke:var(${j.ok ? '--ok' : '--bad'});stroke-width:${j.ok ? 4 : 7}"><title>x = ${ft(j.x)} ft · ${esc(j.size)} @ ${j.spacing}" · ${j.livePsf} psf live · allowable ${j.allowable ?? '–'} ft</title></line>`;
+  }
+  s += `<line x1="${ox}" y1="${oy + D}" x2="${ox + W}" y2="${oy + D}" stroke-linecap="round" style="stroke:var(--ink);stroke-width:8"/>`;
+  for (const z of plan.zones) {
+    s += `<text x="${ox + (z.x0 + z.x1) / 2 * S}" y="${oy + D + 30}" text-anchor="middle" font-size="${fs * 0.8}" style="fill:var(--ink)">${esc(z.size)} @ ${z.spacing}"</text>`;
+  }
+  s += `<text x="${ox + W / 2}" y="${oy + D + below - 4}" text-anchor="middle" font-size="${fs * 0.75}" style="fill:var(--muted)">${ft(plan.width)} ft along the house · joists span ${ft(plan.depth)} ft to the beam</text>`;
+  const svg = $('plan');
+  svg.setAttribute('viewBox', `0 0 ${W + pad * 2} ${oy + D + below}`);
+  svg.innerHTML = s;
+
+  const fails = check.joists.filter((j) => !j.ok);
+  $('fails').innerHTML = fails.length
+    ? fails.map((j) => `<li><span class="bad">x = ${ft(j.x)} ft</span> · ${esc(j.size)} @ ${j.spacing}"${j.underTub ? ' · under hot tub' : ''} · ${esc(j.reason)}</li>`).join('')
+    : `<li class="ok">All ${check.total} joists pass the span check.</li>`;
+}
+
+function renderSummary() {
+  const rows = Array.isArray(result.summary?.cutList) && result.summary.cutList.length
+    ? result.summary.cutList.map((c) => [c.item, c.qty, c.length])
+    : result.joistCounts.map((c) => [c.item, c.qty, `${c.lengthFt} ft`]);
+  $('cut').innerHTML = `<tr><th>Item</th><th>Qty</th><th>Length</th></tr>` +
+    rows.map((r) => `<tr>${r.map((v) => `<td>${esc(v)}</td>`).join('')}</tr>`).join('');
+  $('note').textContent = result.summary?.permitNote ?? '';
+}
+
+function renderCalls(calls) {
+  $('calls').innerHTML = `<tr><th>Step</th><th>HTTP</th><th>Time</th><th>Tokens in / out</th></tr>` +
+    calls.map((c) => `<tr><td>${esc(c.step)}</td><td>${esc(c.status)}</td><td>${(c.ms / 1000).toFixed(1)} s</td><td>${esc(c.inTok ?? '–')} / ${esc(c.outTok ?? '–')}</td></tr>`).join('');
+}
+</script>
+</body>
+</html>

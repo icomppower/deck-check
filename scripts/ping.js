@@ -20,7 +20,7 @@ const res = await fetch(`${base}/v1/messages`, {
   },
   body: JSON.stringify({
     model,
-    max_tokens: 20,
+    max_tokens: 64,
     messages: [{ role: 'user', content: 'Reply with OK' }],
   }),
 });
@@ -39,4 +39,5 @@ const reply = Array.isArray(data.content)
   : '';
 console.log(`HTTP ${res.status}`);
 console.log(`model: ${data.model ?? model}`);
+console.log(`stop_reason: ${data.stop_reason}`);
 console.log(`reply: ${reply}`);
