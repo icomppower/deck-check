@@ -4,6 +4,15 @@ import { museClient, runPipeline } from '../lib/core.js';
 
 export const config = { maxDuration: 120 };
 
+// Simple daily run cap so the event key isn't drained (per warm instance; resets each UTC day).
+const DAILY_CAP = Number(process.env.DAILY_RUN_CAP) || 40;
+let capDay = '', capCount = 0;
+function overCap() {
+  const day = new Date().toISOString().slice(0, 10);
+  if (day !== capDay) { capDay = day; capCount = 0; }
+  return ++capCount > DAILY_CAP;
+}
+
 function send(res, status, body) {
   res.statusCode = status;
   res.setHeader('content-type', 'application/json; charset=utf-8');
@@ -32,6 +41,8 @@ export default async function handler(req, res) {
   const sentence = typeof body.sentence === 'string' ? body.sentence.trim().slice(0, 500) : '';
   const plan = body.plan && typeof body.plan === 'object' ? body.plan : undefined;
   if (!sentence && !plan) return send(res, 400, { error: 'Describe your deck in one sentence' });
+
+  if (overCap()) return send(res, 429, { error: 'Daily demo limit reached — try again tomorrow' });
 
   try {
     send(res, 200, await runPipeline({ sentence, plan, call: museClient() }));
